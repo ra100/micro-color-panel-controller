@@ -1,0 +1,21 @@
+# DaVinci Micro Color Panel USB HID Device Rules
+# This file grants non-root access to the DaVinci Micro Panel
+# Copy to /etc/udev/rules.d/ and reload udev rules
+
+# Blackmagic Design DaVinci Resolve Micro Color Panel
+# Vendor ID: 1edb, Product ID: da0f
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1edb", ATTRS{idProduct}=="da0f", MODE="0666", GROUP="dialout", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1edb", ATTRS{idProduct}=="da0f", MODE="0666", GROUP="dialout", TAG+="uaccess"
+
+# Additional rule for USB device interface
+KERNEL=="hidraw*", ATTRS{idVendor}=="1edb", ATTRS{idProduct}=="da0f", MODE="0666", GROUP="dialout"
+
+# Make sure the device is accessible by the current user
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="1edb", ATTRS{idProduct}=="da0f", RUN+="/bin/chmod 666 /dev/%k"
+
+# Alternative: Grant access to specific user group
+# Replace 'username' with your actual username
+# SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1edb", ATTRS{idProduct}=="da0f", MODE="0660", GROUP="username"
+
+# Alternative: Grant access to dialout group (common for hardware devices)
+# SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1edb", ATTRS{idProduct}=="da0f", MODE="0660", GROUP="dialout"
