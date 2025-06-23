@@ -172,6 +172,9 @@ class MicroPanel:
                     for event in events:
                         if self.event_callback:
                             self.event_callback(event)
+                else:
+                    # No data received - this might be normal but let's track it
+                    pass
 
             except Exception as e:
                 if self.running:  # Only log if we're supposed to be running
@@ -208,14 +211,15 @@ class MicroPanel:
         events = []
         timestamp = time.time()
 
-        if len(data) < 8:
+        if len(data) < 1:
             return events
 
-        # This is a placeholder implementation
-        # Real implementation would need reverse engineering of the HID protocol
+        # DEBUG: Print raw HID data to understand the protocol
+        if any(b != 0 for b in data):  # Only log non-zero data
+            hex_data = ' '.join(f'{b:02x}' for b in data[:16])  # First 16 bytes
+            logger.info(f"RAW HID DATA: [{hex_data}{'...' if len(data) > 16 else ''}] (len={len(data)})")
 
-        # Example parsing (to be replaced with actual protocol):
-        # Report ID might be data[0]
+        # Report ID is typically the first byte
         report_id = data[0] if data else 0
 
         if report_id == 0x01:  # Hypothetical rotary encoder report
