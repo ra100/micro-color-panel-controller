@@ -81,13 +81,8 @@ class BlenderController:
             BlenderMode.SHADING: self._setup_shading_mappings(),
         }
 
-        # LED assignments
-        self.led_mode_indicators = {
-            BlenderMode.VIEWPORT: 0,
-            BlenderMode.TIMELINE: 1,
-            BlenderMode.MODELING: 2,
-            BlenderMode.SHADING: 3,
-        }
+        # Button illumination indicates panel activity
+        self.illumination_active = False
 
     def start(self):
         """Start the Blender controller"""
@@ -96,7 +91,7 @@ class BlenderController:
 
         self.running = True
         self.panel.start_reading(self._on_panel_event)
-        self._update_mode_leds()
+        self._update_button_illumination()
         print(f"Blender controller started in {self.mode.value} mode")
 
     def stop(self):
@@ -109,7 +104,7 @@ class BlenderController:
     def set_mode(self, mode: BlenderMode):
         """Change the current operating mode"""
         self.mode = mode
-        self._update_mode_leds()
+        self._update_button_illumination()
         print(f"Switched to {mode.value} mode")
 
     def _on_panel_event(self, event: PanelEvent):
@@ -146,16 +141,11 @@ class BlenderController:
             elif event.id == 23:
                 self.set_mode(BlenderMode.SHADING)
 
-    def _update_mode_leds(self):
-        """Update LEDs to show current mode"""
-        # Turn off all mode LEDs
-        for led_id in self.led_mode_indicators.values():
-            self.panel.set_led(led_id, False)
-
-        # Turn on current mode LED
-        current_led = self.led_mode_indicators.get(self.mode)
-        if current_led is not None:
-            self.panel.set_led(current_led, True)
+    def _update_button_illumination(self):
+        """Update button illumination to indicate panel activity"""
+        # Turn on button illumination when panel is active
+        self.illumination_active = True
+        self.panel.set_button_illumination(True)
 
     # ==================== VIEWPORT MODE ====================
 
@@ -258,10 +248,10 @@ class BlenderController:
         if event.pressed:
             if bpy.context.screen.is_animation_playing:
                 bpy.ops.screen.animation_cancel()
-                self.panel.set_led(4, False)  # Playback indicator
+                # Button illumination stays on during active control
             else:
                 bpy.ops.screen.animation_play()
-                self.panel.set_led(4, True)
+                # Button illumination indicates panel activity
 
     def _timeline_goto_start(self, event: PanelEvent):
         """Go to start of timeline"""
@@ -514,12 +504,13 @@ def demo_mode():
     # Start reading events
     panel.start_reading(demo_event_handler)
 
-    # Test LED control
-    print("Testing LED control...")
-    for i in range(4):
-        panel.set_led(i, True)
-        time.sleep(0.3)
-        panel.set_led(i, False)
+    # Test button illumination control
+    print("Testing button illumination...")
+    for i in range(3):
+        panel.set_button_illumination(True)
+        time.sleep(0.4)
+        panel.set_button_illumination(False)
+        time.sleep(0.4)
 
     try:
         while True:

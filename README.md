@@ -6,7 +6,7 @@ Use your DaVinci Micro Color Panel outside of DaVinci Resolve for any applicatio
 
 - **Universal Control**: Map panel controls to any application (Blender, Photoshop, OBS, etc.)
 - **Flexible Mapping**: Customizable control schemes for different applications
-- **Real-time Feedback**: LED indicators and display updates
+- **Real-time Feedback**: Button illumination and display updates
 - **Plugin Architecture**: Easy to extend for new applications
 
 ## 🔧 Hardware Details
@@ -23,7 +23,7 @@ Use your DaVinci Micro Color Panel outside of DaVinci Resolve for any applicatio
 - 12 Rotary encoders with push buttons
 - 3 Trackballs with rotary wheels around each trackball
 - 40 Additional function buttons
-- LED indicators
+- Illuminated buttons (global on/off control)
 - Small displays/labels
 
 **Total Controls:**
@@ -40,7 +40,7 @@ Use your DaVinci Micro Color Panel outside of DaVinci Resolve for any applicatio
 2. [x] Identify device interfaces and endpoints
 3. [x] Create basic HID communication layer
 4. [ ] Parse input reports from rotaries, buttons, trackballs
-5. [ ] Implement output reports for LEDs and displays
+5. [ ] Implement output reports for button illumination and displays
 
 ### Phase 2: Application Integration
 
@@ -166,7 +166,7 @@ for event in panel.read_events():
         print(f"Button {event.id} {'pressed' if event.pressed else 'released'}")
 
 # Control feedback
-panel.set_led(1, True)  # Turn on LED 1
+panel.set_button_illumination(True)  # Turn on button lights
 panel.set_display(0, "Blender")  # Update display
 ```
 

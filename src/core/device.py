@@ -57,7 +57,7 @@ class MicroPanel:
     This class handles:
     - Device connection and initialization
     - Reading input events (rotaries, buttons, trackballs)
-    - Sending output commands (LEDs, displays)
+    - Sending output commands (button illumination, displays)
     - Event callbacks and processing
     """
 
@@ -72,7 +72,7 @@ class MicroPanel:
         self.rotary_positions = [0] * 15  # 12 main rotaries + 3 trackball wheels
         self.button_states = [False] * 52  # 12 rotary buttons + 40 other buttons
         self.trackball_states = [(0, 0)] * 3  # 3 trackballs (x, y) positions
-        self.led_states = [False] * 16  # LED indicators (estimate)
+        self.button_illumination = False  # Global button illumination on/off
 
         # Previous state for delta calculation
         self._prev_rotary_raw = [0] * 15  # All rotary encoders
@@ -277,13 +277,12 @@ class MicroPanel:
 
         return events
 
-    def set_led(self, led_id: int, state: bool) -> bool:
+    def set_button_illumination(self, state: bool) -> bool:
         """
-        Control an LED on the panel
+        Control global button illumination on the panel
 
         Args:
-            led_id: LED identifier (0-15)
-            state: True to turn on, False to turn off
+            state: True to turn on button lights, False to turn off
 
         Returns:
             bool: True if successful
@@ -291,24 +290,21 @@ class MicroPanel:
         if not self.connected or not self.device:
             return False
 
-        if not (0 <= led_id < 16):
-            logger.error(f"Invalid LED ID: {led_id}")
-            return False
-
         try:
             # This is a placeholder - actual command format TBD
-            command = [0x10, led_id, 1 if state else 0] + [0] * 61
+            # Likely a single command to control all button illumination
+            command = [0x10, 0x01 if state else 0x00] + [0] * 62
             result = self.device.write(command)
 
             if result > 0:
-                self.led_states[led_id] = state
+                self.button_illumination = state
                 return True
             else:
-                logger.error(f"Failed to set LED {led_id}")
+                logger.error("Failed to set button illumination")
                 return False
 
         except Exception as e:
-            logger.error(f"Error setting LED {led_id}: {e}")
+            logger.error(f"Error setting button illumination: {e}")
             return False
 
     def set_display(self, display_id: int, text: str) -> bool:
@@ -355,15 +351,14 @@ class MicroPanel:
             return {}
 
     def reset_panel(self) -> bool:
-        """Reset panel to default state (turn off all LEDs, clear displays)"""
+        """Reset panel to default state (turn off button illumination, clear displays)"""
         if not self.connected:
             return False
 
         success = True
 
-        # Turn off all LEDs
-        for i in range(16):
-            success &= self.set_led(i, False)
+        # Turn off button illumination
+        success &= self.set_button_illumination(False)
 
         # Clear displays (if any)
         # This would depend on the actual panel capabilities
@@ -402,11 +397,13 @@ if __name__ == "__main__":
         panel.start_reading(on_event)
 
         try:
-            # Test LED control
-            for i in range(5):
-                panel.set_led(i % 4, True)
-                time.sleep(0.5)
-                panel.set_led(i % 4, False)
+            # Test button illumination control
+            print("Testing button illumination...")
+            for i in range(3):
+                panel.set_button_illumination(True)
+                time.sleep(0.8)
+                panel.set_button_illumination(False)
+                time.sleep(0.8)
 
             # Keep running
             while True:

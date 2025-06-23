@@ -87,14 +87,12 @@ def main():
     # Start event monitoring
     panel.start_reading(test_event_handler)
 
-    # LED test sequence
-    print("🔄 Testing LED control...")
-    led_test_sequence = [0, 1, 2, 3, 4, 5]
-    for led_id in led_test_sequence:
-        print(f"  Turning on LED {led_id}")
-        panel.set_led(led_id, True)
-        time.sleep(0.4)
-        panel.set_led(led_id, False)
+    # Button illumination test
+    print("🔄 Testing button illumination...")
+    for i in range(3):
+        print(f"  Button lights: {'ON' if i % 2 == 0 else 'OFF'}")
+        panel.set_button_illumination(i % 2 == 0)
+        time.sleep(0.6)
 
     print("")
     print("🎮 Panel ready for testing!")
