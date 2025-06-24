@@ -1,0 +1,93 @@
+{
+  "encoder_rotations": {
+    "Y_LIFT_ROTATION": 3,
+    "Y_GAMMA_ROTATION": 7,
+    "Y_GAIN_ROTATION": 11,
+    "CONTRAST_ROTATION": 15,
+    "PIVOT_ROTATION": 19,
+    "COLOR_BOOST_ROTATION": 17
+  },
+  "encoder_buttons": {
+    "Y_LIFT_BUTTON": 8,
+    "Y_GAMMA_BUTTON": 9,
+    "Y_GAIN_BUTTON": 10,
+    "CONTRAST_BUTTON": 11,
+    "PIVOT_BUTTON": 12,
+    "MID_DETAIL_BUTTON": 13,
+    "COLOR_BOOST_BUTTON": 14,
+    "SHADOWS_BUTTON": 15,
+    "HIGHLIGHTS_BUTTON": 16,
+    "SATURATION_BUTTON": 17,
+    "HUE_BUTTON": 18,
+    "LUM_MIX_BUTTON": 19
+  },
+  "trackball_axes": {
+    "LEFT_TRACKBALL_X": [2, 6, 3],
+    "LEFT_TRACKBALL_Y": [6, 2, 7],
+    "LEFT_TRACKBALL_WHEEL": [10],
+    "CENTER_TRACKBALL_X": [14, 15],
+    "CENTER_TRACKBALL_Y": [14]
+  },
+  "function_buttons": {
+    "AUTO_COLOR": 20,
+    "OFFSET": 21,
+    "COPY": 22,
+    "PASTE": 23,
+    "UNDO": 24,
+    "REDO": 25,
+    "DELETE": 26,
+    "RESET": 27,
+    "BYPASS": 28,
+    "DISABLE": 29,
+    "USER": 30,
+    "LOOP": 31,
+    "SPECIAL_LEFT": 32,
+    "SPECIAL_RIGHT": 33,
+    "PLAY_STILL": 34,
+    "WIPE_STILL": 35,
+    "GRAB_STILL": 36,
+    "H_LITE": 37,
+    "VIEWER": 38,
+    "CURSOR": 39,
+    "SELECT": 40,
+    "RESET_LIFT": 41,
+    "RESET_GAMMA": 42,
+    "RESET_GAIN": 43,
+    "ADD_NODE": 44,
+    "ADD_WINDOW": 45,
+    "ADD_KEYFRAME": 46,
+    "PREV_STILL": 47,
+    "NEXT_STILL": 48,
+    "PREV_KEYFRAME": 49,
+    "NEXT_KEYFRAME": 50,
+    "PREV_NODE": 51,
+    "NEXT_NODE": 52,
+    "PREV_FRAME": 53,
+    "NEXT_FRAME": 54,
+    "PREV_CLIP": 55,
+    "NEXT_CLIP": 56,
+    "BACKWARD_PLAY": 57,
+    "FORWARD_PLAY": 58,
+    "STOP": 59
+  },
+  "trackball_status": {
+    "LEFT_TRACKBALL": {
+      "status": "FULLY_FUNCTIONAL",
+      "axes": ["X", "Y", "WHEEL_CW", "WHEEL_CCW"],
+      "report": 5,
+      "description": "Shadows trackball - all axes working"
+    },
+    "CENTER_TRACKBALL": {
+      "status": "PARTIALLY_FUNCTIONAL",
+      "axes": ["X", "Y"],
+      "report": 5,
+      "description": "Midtones trackball - wheel not connected to USB"
+    },
+    "RIGHT_TRACKBALL": {
+      "status": "NON_FUNCTIONAL",
+      "axes": [],
+      "report": null,
+      "description": "Highlights trackball - not connected to USB interface"
+    }
+  }
+}

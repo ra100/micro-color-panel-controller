@@ -99,13 +99,14 @@ def test_working_illumination():
             except usb.core.USBError as e:
                 print(f"   ❌ Failed: {e}")
 
-        # Demo sequence: OFF -> ON -> OFF -> BRIGHT -> OFF
+        # Demo sequence: OFF -> DIM -> BRIGHT -> DIM (255 is actually dim!) -> OFF
+        # Note: Device has non-linear brightness - 100 is brighter than 255!
         print("\n🎆 DEMO SEQUENCE: Cycling illumination...")
         demo_sequence = [
             (bytes([0x03, 0x00, 0x00]), "OFF"),
-            (bytes([0x03, 0x32, 0x32]), "DIM"),  # 0x32 = 50
-            (bytes([0x03, 0x64, 0x64]), "MEDIUM"), # 0x64 = 100
-            (bytes([0x03, 0xFF, 0xFF]), "BRIGHT"), # 0xFF = 255
+            (bytes([0x03, 0x32, 0x32]), "DIM"),     # 0x32 = 50
+            (bytes([0x03, 0x64, 0x64]), "BRIGHT"),  # 0x64 = 100 (actually brightest!)
+            (bytes([0x03, 0xFF, 0xFF]), "DIM (255)"), # 0xFF = 255 (actually dim!)
             (bytes([0x03, 0x00, 0x00]), "OFF"),
         ]
 

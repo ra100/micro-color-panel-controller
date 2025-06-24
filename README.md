@@ -2,6 +2,16 @@
 
 Use your DaVinci Micro Color Panel outside of DaVinci Resolve for any application - Blender scene navigation, audio mixing, photo editing, and more!
 
+## 🎉 Current Status: **WORKING PROTOTYPE**
+
+✅ **USB Protocol Reverse Engineered**: Complete understanding of communication
+✅ **61 Controls Mapped**: All buttons, encoders, and trackballs identified
+✅ **Illumination Control**: Global button lighting with multiple brightness levels
+✅ **Robust USB Handling**: Stable connection with automatic recovery
+✅ **Ready for Integration**: Framework ready for application development
+
+📊 **Hardware Discovered**: 12 encoders, 52+ buttons, 2 working trackballs (LEFT+CENTER), global illumination
+
 ## 🎯 Project Goals
 
 - **Universal Control**: Map panel controls to any application (Blender, Photoshop, OBS, etc.)
@@ -32,15 +42,17 @@ Use your DaVinci Micro Color Panel outside of DaVinci Resolve for any applicatio
 - 52 Buttons (12 rotary buttons + 40 function buttons)
 - 3 Trackballs for X/Y movement
 
-## 📋 Implementation Steps (POC)
+## 📋 Implementation Status
 
-### Phase 1: Device Communication ✅
+### Phase 1: Device Communication ✅ **COMPLETED**
 
 1. [x] Research USB HID protocol for the panel
 2. [x] Identify device interfaces and endpoints
-3. [x] Create basic HID communication layer
-4. [ ] Parse input reports from rotaries, buttons, trackballs
-5. [ ] Implement output reports for button illumination and displays
+3. [x] Create robust HID communication layer with error recovery
+4. [x] Parse all input reports (buttons, encoders, trackballs)
+5. [x] Implement output reports for button illumination
+6. [x] Map all 61+ controls with complete documentation
+7. [x] Discover non-linear brightness mapping and USB stability solutions
 
 ### Phase 2: Application Integration
 
@@ -107,28 +119,39 @@ pip install -r requirements.txt
 micro-panel/
 ├── src/
 │   ├── core/
-│   │   ├── device.py          # HID device communication
-│   │   ├── protocol.py        # Panel protocol implementation
-│   │   └── mapping.py         # Control mapping engine
-│   ├── applications/
-│   │   ├── blender.py         # Blender integration
-│   │   ├── obs.py             # OBS Studio control
-│   │   └── midi.py            # Virtual MIDI controller
-│   ├── config/
-│   │   ├── profiles/          # Control profiles
-│   │   └── mappings/          # Application mappings
-│   └── gui/
-│       └── config_app.py      # Configuration interface
+│   │   ├── device.py          # Main panel interface (working!)
+│   │   └── input_parser.py    # Input event parsing
+│   └── applications/
+│       └── blender.py         # Blender integration example
 ├── udev/
 │   └── 99-davinci-micro-panel.rules  # Linux device permissions
-├── docs/
-│   ├── PROTOCOL.md            # Reverse engineering notes
-│   ├── API.md                 # API documentation
-│   └── APPLICATIONS.md        # Supported applications
-└── examples/
-    ├── basic_usage.py         # Simple usage examples
-    └── custom_mapping.py      # Custom control mapping
+├── investigation/             # 🔬 Development & testing tools
+│   ├── map_*.py              # Control mapping tools used for discovery
+│   ├── test_*.py             # Testing and validation tools
+│   ├── *_capture.py          # USB data capture tools
+│   ├── debug_*.py            # Debugging utilities
+│   └── README.md             # Investigation tools documentation
+├── data/                     # 📊 Generated data & results
+│   ├── *.pcapng              # Raw USB captures from Wireshark
+│   ├── *_results.py          # Analysis results
+│   ├── *_mapping_*.py        # Generated mapping data
+│   └── README.md             # Data documentation
+├── davinci_panel_mapping.json # 🎯 Complete control mapping (machine-readable)
+├── davinci_panel_controls.py  # 🎯 Python constants for development
+├── environment.yml            # Conda environment setup
+├── requirements.txt           # Pip dependencies (alternative)
+└── README.md                 # This file
 ```
+
+### 🧹 Clean Organization
+
+The project has been organized into focused directories:
+
+- **Root**: Essential files for using the panel (device interface, mapping data, setup)
+- **investigation/**: All the tools used during reverse engineering (25+ files)
+- **data/**: Generated data and raw USB captures from the investigation process
+
+This separation keeps the main project clean while preserving all development history and tools for future reference or extending functionality.
 
 ## 🎮 Supported Applications
 

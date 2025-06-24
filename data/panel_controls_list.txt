@@ -1,0 +1,98 @@
+DaVinci Resolve Micro Color Panel - Control Mapping List
+======================================================
+
+TOTAL CONTROLS: 67+ (12 encoders + 52+ buttons + 9 trackball axes)
+
+=== ROTARY ENCODERS (12 total) ===
+Each encoder has rotation + push button functionality
+
+ALL ENCODERS (12 total):
+1. Y_LIFT        - Luminance lift/shadows adjustment (darkest tones)
+2. Y_GAMMA       - Luminance gamma/midtone adjustment
+3. Y_GAIN        - Luminance gain/highlights adjustment (brightest tones)
+4. CONTRAST      - Overall contrast adjustment
+5. PIVOT         - Contrast pivot point control (where contrast centers)
+6. MID_DETAIL    - Mid-tone detail enhancement control
+7. COLOR_BOOST   - Color intensity/vibrance boost control
+8. SHADOWS       - Shadow region fine adjustment
+9. HIGHLIGHTS    - Highlight region fine adjustment
+10. SATURATION   - Color saturation intensity control
+11. HUE          - Global hue shift/color balance adjustment
+12. LUM_MIX      - Luminance mix blending control
+
+=== TRACKBALLS (3 total) ===
+Each trackball has X/Y movement + wheel rotation
+
+1. LEFT_TRACKBALL    - Shadows/Lift color adjustment trackball
+   - X axis: Red/Cyan shift in shadows
+   - Y axis: Blue/Yellow shift in shadows
+   - Wheel: Luminance/exposure adjustment in shadows
+2. CENTER_TRACKBALL  - Midtones/Gamma color adjustment trackball
+   - X axis: Red/Cyan shift in midtones
+   - Y axis: Blue/Yellow shift in midtones
+   - Wheel: Luminance/exposure adjustment in midtones
+3. RIGHT_TRACKBALL   - Highlights/Gain color adjustment trackball
+   - X axis: Red/Cyan shift in highlights
+   - Y axis: Blue/Yellow shift in highlights
+   - Wheel: Luminance/exposure adjustment in highlights
+
+=== FUNCTION BUTTONS (52+ total) ===
+
+LEFT SIDE BUTTONS:
+- AUTO_COLOR     - Automatic color balance/correction
+- OFFSET         - Offset adjustment mode activation
+- COPY           - Copy current color settings
+- PASTE          - Paste copied color settings
+- UNDO           - Undo last color adjustment
+- REDO           - Redo previously undone adjustment
+- DELETE         - Delete current adjustments/reset to default
+- RESET          - Reset all color parameters to neutral
+- BYPASS         - Bypass/disable all color corrections
+- DISABLE        - Disable current node/effect
+
+BOTTOM LEFT SIDE BUTTONS:
+- USER           - User-defined custom function
+- LOOP           - Loop playback mode toggle
+- SPECIAL_LEFT   - Special function button 1 (user programmable)
+- SPECIAL_RIGHT  - Special function button 2 (user programmable)
+
+TOP LEFT BUTTONS:
+- PLAY_STILL     - Play still image/frame hold
+- WIPE_STILL     - Wipe between original and corrected still
+- GRAB_STILL     - Capture current frame as reference still
+
+TOP CENTER BUTTONS:
+- H_LITE         - Highlight indicator/clipping warning toggle
+- VIEWER         - Viewer mode selection (scopes/image)
+- CURSOR         - Cursor/selection tool activation
+- SELECT         - Node/clip selection mode
+- RESET_LIFT     - Reset only lift/shadows parameters
+- RESET_GAMMA    - Reset only gamma/midtone parameters
+- RESET_GAIN     - Reset only gain/highlight parameters
+
+TOP RIGHT BUTTONS:
+- ADD_NODE       - Add new color correction node
+- ADD_WINDOW     - Add power window/mask
+- ADD_KEYFRAME   - Add keyframe at current position
+
+RIGHT SIDE BUTTONS:
+- PREV_STILL     - Navigate to previous reference still
+- NEXT_STILL     - Navigate to next reference still
+- PREV_KEYFRAME  - Jump to previous keyframe position
+- NEXT_KEYFRAME  - Jump to next keyframe position
+- PREV_NODE      - Select previous color correction node
+- NEXT_NODE      - Select next color correction node
+- PREV_FRAME     - Step backward one frame
+- NEXT_FRAME     - Step forward one frame
+- PREV_CLIP      - Navigate to previous clip
+- NEXT_CLIP      - Navigate to next clip
+- BACKWARD_PLAY  - Play in reverse/rewind
+- FORWARD_PLAY   - Play forward
+- STOP           - Stop playback
+
+=== UPDATED CONTROL COUNT ===
+Based on your corrections, the panel now has:
+- 12 Rotary Encoders (each with push button = 24 inputs)
+- 9 Trackball axes (3 trackballs × 3 axes each = 9 inputs)
+- 34+ Function Buttons (as listed above)
+- TOTAL: 67+ individual control inputs

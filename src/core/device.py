@@ -107,7 +107,8 @@ class DaVinciMicroPanel:
 
         Args:
             enabled: True to turn on, False to turn off
-            brightness: Brightness level 0-255 (default: 100 for medium brightness)
+            brightness: Brightness level 0-255 (default: 100 for medium/bright)
+                       Note: Device has non-linear mapping - 100 is brighter than 255!
 
         Returns:
             True if successful, False otherwise
@@ -117,6 +118,17 @@ class DaVinciMicroPanel:
             return False
 
         try:
+            # First send secondary control command (required for initialization)
+            secondary_data = bytes([0x0a, 0x01])
+            self.device.ctrl_transfer(
+                bmRequestType=0x21,
+                bRequest=0x09,
+                wValue=0x030a,  # Report Type 3, Report ID 0x0a
+                wIndex=0x0002,  # Use exact interface index like working script
+                data_or_wLength=secondary_data
+            )
+
+            # Then send illumination command
             if enabled:
                 # Turn on illumination with specified brightness
                 brightness = max(0, min(255, brightness))  # Clamp to valid range
@@ -127,12 +139,12 @@ class DaVinciMicroPanel:
                 data = bytes([0x03, 0x00, 0x00])
                 print("🔘 Turning OFF panel illumination")
 
-            # Send HID SET_REPORT command
+            # Send HID SET_REPORT command with exact parameters from working script
             result = self.device.ctrl_transfer(
                 bmRequestType=0x21,  # Host->Device, Class, Interface
                 bRequest=0x09,       # SET_REPORT
                 wValue=0x0303,       # Report Type 3, Report ID 0x03
-                wIndex=self.HID_INTERFACE,
+                wIndex=0x0002,       # Use exact interface index like working script
                 data_or_wLength=data
             )
 
@@ -189,17 +201,71 @@ class DaVinciMicroPanel:
 
     def _input_monitor_loop(self):
         """Main input monitoring loop"""
+        last_illumination_refresh = time.time()
+        illumination_refresh_interval = 30  # Refresh every 30 seconds
+
         while self.running and self.is_connected:
             try:
-                # Read input events from the panel
-                # This would be implemented based on the HID input reports
-                # For now, just a placeholder
-                time.sleep(0.01)  # 100Hz polling
+                # Periodic illumination refresh to prevent auto-timeout
+                current_time = time.time()
+                if current_time - last_illumination_refresh > illumination_refresh_interval:
+                    if self.is_illuminated:
+                        # Silently refresh illumination without logging
+                        try:
+                            self.device.ctrl_transfer(
+                                bmRequestType=0x21,
+                                bRequest=0x09,
+                                wValue=0x0303,
+                                wIndex=0x0002,
+                                data_or_wLength=bytes([0x03, 100, 100])  # Keep at medium brightness
+                            )
+                        except:
+                            pass  # Ignore refresh errors
+                    last_illumination_refresh = current_time
 
+                # Read input events from HID endpoint
+                data = self.device.read(0x81, 64, timeout=50)  # Shorter timeout for better responsiveness
+
+                if data:
+                    data_bytes = bytes(data)
+
+                    # Only process non-zero data (actual input events)
+                    if any(b != 0 for b in data_bytes):
+                        # More compact logging to reduce overhead
+                        report_id = data_bytes[0]
+                        hex_data = ' '.join(f'{b:02x}' for b in data_bytes[:12])  # Show less data
+                        print(f"📥 ID={report_id:02x}: [{hex_data}...]")
+
+                        # Call input event callbacks if implemented
+                        self._process_input_data(data_bytes)
+
+            except usb.core.USBTimeoutError:
+                # Timeouts are normal when no input - don't log them
+                continue
             except Exception as e:
-                if self.running:  # Only log if we're supposed to be running
+                # Only log non-timeout errors if we're still running
+                if self.running:
                     print(f"⚠️ Input monitoring error: {e}")
-                time.sleep(0.1)
+                time.sleep(0.1)  # Longer delay on errors
+
+    def _process_input_data(self, data: bytes):
+        """Process raw input data and trigger callbacks"""
+        # TODO: Integrate InputParser once format is discovered
+        # For now, just trigger callbacks with raw data
+
+        # Placeholder: trigger callbacks based on simple patterns
+        report_id = data[0] if data else 0
+
+        # Example: if this is encoder data, trigger encoder callbacks
+        if report_id == 0x01:  # Hypothetical encoder report
+            # Parse and trigger encoder callbacks
+            pass
+        elif report_id == 0x02:  # Hypothetical button report
+            # Parse and trigger button callbacks
+            pass
+        elif report_id == 0x03:  # Hypothetical trackball report
+            # Parse and trigger trackball callbacks
+            pass
 
     def register_button_callback(self, button_id: int, callback: Callable):
         """Register callback for button press events"""
@@ -240,10 +306,11 @@ if __name__ == "__main__":
 
             # Test different brightness levels
             print("\n🌟 Testing brightness levels...")
-            for brightness in [50, 100, 150, 200, 255]:
-                print(f"Setting brightness to {brightness}")
+            # Based on user testing: 255 is dim, 100 is bright, non-linear mapping
+            for brightness, label in [(255, "255 (dim)"), (50, "50 (dim)"), (80, "80 (medium)"), (100, "100 (bright)"), (120, "120 (test)")]:
+                print(f"Setting brightness to {brightness} - {label}")
                 panel.set_illumination(True, brightness)
-                time.sleep(1)
+                time.sleep(2)  # Longer delay to see difference
 
             # Test secondary control
             print("\n🔧 Testing secondary control...")
