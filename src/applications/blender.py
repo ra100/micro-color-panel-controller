@@ -1,156 +1,315 @@
 #!/usr/bin/env python3
 """
-DaVinci Micro Panel → Blender Integration
+DaVinci Micro Panel → Blender Addon
 Universal controller for Blender 3D navigation using the DaVinci panel
 """
 
+bl_info = {
+    "name": "DaVinci Micro Panel Controller",
+    "author": "Micro Panel Project",
+    "version": (1, 0, 0),
+    "blender": (3, 0, 0),
+    "location": "3D Viewport > Sidebar > Panel",
+    "description": "Use DaVinci Micro Color Panel for 3D navigation and tool control",
+    "category": "3D View",
+    "support": "COMMUNITY",
+    "wiki_url": "",
+    "tracker_url": "",
+}
+
+import bpy
+import bmesh
+import mathutils
+from mathutils import Matrix, Vector, Euler
 import sys
 import os
 import time
 import threading
 from typing import Optional
 
-# Add the parent directory to sys.path to import our modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+# Add the addon directory to sys.path to import our modules
+addon_dir = os.path.dirname(__file__)
+if addon_dir not in sys.path:
+    sys.path.insert(0, os.path.join(addon_dir, '..', '..'))
 
-from src.core.device import DaVinciMicroPanel
+try:
+    from src.core.device import DaVinciMicroPanel
+    from davinci_panel_controls import ENCODER_BUTTONS, FUNCTION_BUTTONS, TRACKBALL_AXES
+    DEVICE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ DaVinci Panel device import failed: {e}")
+    DEVICE_AVAILABLE = False
+
+# Global controller instance
+panel_controller = None
+
+class DaVinciPanelProperties(bpy.types.PropertyGroup):
+    """Properties for DaVinci Panel addon"""
+
+    is_connected: bpy.props.BoolProperty(
+        name="Panel Connected",
+        description="Whether the DaVinci panel is connected",
+        default=False
+    )
+
+    sensitivity: bpy.props.FloatProperty(
+        name="Sensitivity",
+        description="Control sensitivity multiplier",
+        default=1.0,
+        min=0.1,
+        max=5.0
+    )
+
+    invert_x: bpy.props.BoolProperty(
+        name="Invert X",
+        description="Invert horizontal trackball movement",
+        default=False
+    )
+
+    invert_y: bpy.props.BoolProperty(
+        name="Invert Y",
+        description="Invert vertical trackball movement",
+        default=False
+    )
 
 class BlenderController:
-    """
-    DaVinci Micro Panel controller for Blender
-
-    Maps panel controls to Blender navigation:
-    - Trackballs → 3D viewport navigation
-    - Rotary encoders → Various Blender parameters
-    - Buttons → Tool shortcuts and mode switching
-    """
+    """DaVinci Micro Panel controller for Blender integration"""
 
     def __init__(self):
         self.panel: Optional[DaVinciMicroPanel] = None
         self.running = False
+        self.timer = None
 
-    def start(self):
-        """Start the Blender controller"""
-        print("🎨 Starting DaVinci → Blender Controller")
-        print("=" * 50)
+    def connect(self):
+        """Connect to the DaVinci panel"""
+        if not DEVICE_AVAILABLE:
+            return False, "Device driver not available"
 
         try:
-            # Connect to panel with automatic illumination
             print("🔌 Connecting to DaVinci Micro Panel...")
             self.panel = DaVinciMicroPanel()
 
             if not self.panel.connect():
-                print("❌ Failed to connect to panel")
-                return False
+                return False, "Failed to connect to panel"
 
             print("✅ Panel connected and illuminated!")
+            return True, "Panel connected successfully"
 
-            # Set up input event callbacks
-            self._setup_callbacks()
-
-            # Start input monitoring
-            self.panel.start_input_monitoring()
-
-            self.running = True
-            print("\n🎛️ Controller active - panel buttons should be lit!")
-            print("📋 Available controls:")
-            print("   • Trackballs → 3D viewport navigation")
-            print("   • Rotary encoders → Zoom, rotate, pan")
-            print("   • Buttons → Tool shortcuts")
-            print("\n🔍 Input monitoring active - move any control to see raw data")
-            print("⚠️  Press Ctrl+C to stop controller\n")
-
-            # Main control loop
-            self._run_main_loop()
-
-        except KeyboardInterrupt:
-            print("\n🛑 Controller stopped by user")
         except Exception as e:
-            print(f"\n❌ Controller error: {e}")
-        finally:
-            self.stop()
+            return False, f"Connection error: {str(e)}"
 
-        return True
-
-    def stop(self):
-        """Stop the controller and cleanup"""
-        print("\n🔄 Stopping Blender controller...")
-        self.running = False
-
+    def disconnect(self):
+        """Disconnect from the panel"""
         if self.panel:
-            print("💡 Turning off panel illumination...")
             self.panel.cleanup()
-            print("✅ Panel disconnected and lights OFF")
+            self.panel = None
+            print("🔌 Panel disconnected")
 
-        print("🏁 Controller stopped")
+    def start_monitoring(self):
+        """Start input monitoring using Blender's timer system"""
+        if self.panel and not self.running:
+            self.running = True
+            # Register a timer to check for input events
+            self.timer = bpy.context.window_manager.event_timer_add(0.01, window=bpy.context.window)
+            print("🎛️ Input monitoring started")
+            return True
+        return False
 
-    def _setup_callbacks(self):
-        """Set up input event callbacks for panel controls"""
-        if not self.panel:
+    def stop_monitoring(self):
+        """Stop input monitoring"""
+        if self.timer:
+            bpy.context.window_manager.event_timer_remove(self.timer)
+            self.timer = None
+        self.running = False
+        print("🛑 Input monitoring stopped")
+
+    def process_input(self):
+        """Process panel input and apply to Blender"""
+        if not self.panel or not self.running:
             return
 
-        # Register callbacks to receive input events
-        # For now, just log them until we implement proper Blender integration
-
-        def on_button_event(button_id: int, pressed: bool):
-            button_name = f"BUTTON_{button_id}"
-            state = "PRESS" if pressed else "RELEASE"
-            print(f"🔘 {button_name}: {state}")
-
-        def on_encoder_event(encoder_id: int, delta: int):
-            encoder_name = f"ENCODER_{encoder_id}"
-            direction = "↻" if delta > 0 else "↺"
-            print(f"🔄 {encoder_name}: {direction} ({delta:+d})")
-
-        def on_trackball_event(trackball_id: int, x_delta: int, y_delta: int):
-            trackball_name = f"TRACKBALL_{trackball_id}"
-            print(f"🖱️ {trackball_name}: X{x_delta:+3d} Y{y_delta:+3d}")
-
-        # Register the callbacks (these will be triggered by raw input processing)
-        # TODO: Wire these up once input parser format is discovered
-
-        print("📋 Callback system ready - will show events once input format is discovered")
-
-    def _run_main_loop(self):
-        """Main application loop"""
         try:
-            while self.running:
-                # Main loop - controller runs via callbacks
-                time.sleep(0.1)
+            # Get current 3D viewport
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            # Process trackball movement for viewport navigation
+                            # This would be expanded with actual input processing
+                            break
 
-                # Could add periodic tasks here:
-                # - Update panel displays with Blender info
-                # - Adjust illumination based on active tool
-                # - Monitor Blender connection status
+        except Exception as e:
+            print(f"Input processing error: {e}")
 
-        except KeyboardInterrupt:
-            self.running = False
 
+class DAVINCI_OT_connect_panel(bpy.types.Operator):
+    """Connect to DaVinci Micro Panel"""
+    bl_idname = "davinci.connect_panel"
+    bl_label = "Connect Panel"
+    bl_description = "Connect to the DaVinci Micro Panel"
+
+    def execute(self, context):
+        global panel_controller
+
+        if not DEVICE_AVAILABLE:
+            self.report({'ERROR'}, "DaVinci Panel device driver not available")
+            return {'CANCELLED'}
+
+        if panel_controller is None:
+            panel_controller = BlenderController()
+
+        success, message = panel_controller.connect()
+
+        if success:
+            context.scene.davinci_panel.is_connected = True
+            panel_controller.start_monitoring()
+            self.report({'INFO'}, message)
+            return {'FINISHED'}
+        else:
+            self.report({'ERROR'}, message)
+            return {'CANCELLED'}
+
+
+class DAVINCI_OT_disconnect_panel(bpy.types.Operator):
+    """Disconnect from DaVinci Micro Panel"""
+    bl_idname = "davinci.disconnect_panel"
+    bl_label = "Disconnect Panel"
+    bl_description = "Disconnect from the DaVinci Micro Panel"
+
+    def execute(self, context):
+        global panel_controller
+
+        if panel_controller:
+            panel_controller.stop_monitoring()
+            panel_controller.disconnect()
+            context.scene.davinci_panel.is_connected = False
+            self.report({'INFO'}, "Panel disconnected")
+
+        return {'FINISHED'}
+
+
+class DAVINCI_PT_panel(bpy.types.Panel):
+    """DaVinci Panel control panel"""
+    bl_label = "DaVinci Micro Panel"
+    bl_idname = "DAVINCI_PT_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Panel"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.davinci_panel
+
+        # Connection status
+        if props.is_connected:
+            layout.label(text="Status: Connected ✅", icon='LINKED')
+            layout.operator("davinci.disconnect_panel", icon='UNLINKED')
+        else:
+            layout.label(text="Status: Disconnected ❌", icon='UNLINKED')
+            layout.operator("davinci.connect_panel", icon='LINKED')
+
+        layout.separator()
+
+        # Settings
+        layout.prop(props, "sensitivity")
+        layout.prop(props, "invert_x")
+        layout.prop(props, "invert_y")
+
+        layout.separator()
+
+        # Info
+        layout.label(text="Controls:")
+        box = layout.box()
+        box.label(text="• Left Trackball: Rotate view")
+        box.label(text="• Center Trackball: Pan view")
+        box.label(text="• Wheel: Zoom in/out")
+        box.label(text="• Encoders: Various tools")
+        box.label(text="• Buttons: Mode switching")
+
+
+# Modal operator for handling panel input
+class DAVINCI_OT_panel_modal(bpy.types.Operator):
+    """Modal operator for DaVinci panel input handling"""
+    bl_idname = "davinci.panel_modal"
+    bl_label = "DaVinci Panel Input Handler"
+
+    def modal(self, context, event):
+        global panel_controller
+
+        if event.type == 'TIMER' and panel_controller:
+            panel_controller.process_input()
+
+        if not (panel_controller and panel_controller.running):
+            return {'FINISHED'}
+
+        return {'PASS_THROUGH'}
+
+    def execute(self, context):
+        if panel_controller and panel_controller.running:
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        return {'CANCELLED'}
+
+# Classes to register
+classes = (
+    DaVinciPanelProperties,
+    DAVINCI_OT_connect_panel,
+    DAVINCI_OT_disconnect_panel,
+    DAVINCI_PT_panel,
+    DAVINCI_OT_panel_modal,
+)
+
+def register():
+    """Register the addon"""
+    print("🎯 Registering DaVinci Micro Panel addon...")
+
+    # Register all classes
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
+    # Add properties to scene
+    bpy.types.Scene.davinci_panel = bpy.props.PointerProperty(type=DaVinciPanelProperties)
+
+    print("✅ DaVinci Micro Panel addon registered")
+
+def unregister():
+    """Unregister the addon"""
+    print("🔄 Unregistering DaVinci Micro Panel addon...")
+
+    global panel_controller
+
+    # Clean up controller if active
+    if panel_controller:
+        panel_controller.stop_monitoring()
+        panel_controller.disconnect()
+        panel_controller = None
+
+    # Remove properties from scene
+    del bpy.types.Scene.davinci_panel
+
+    # Unregister all classes
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
+
+    print("✅ DaVinci Micro Panel addon unregistered")
+
+# For running as standalone script (development/testing)
 def main():
-    """Main entry point"""
-    print("🎯 DaVinci Micro Panel → Blender Universal Controller")
-    print("🔗 https://github.com/user/micro-panel")
+    """Main entry point for standalone execution"""
+    print("🎯 DaVinci Micro Panel → Blender Development Mode")
+    print("🔗 For addon installation, use Blender's addon preferences")
     print()
 
-    # Check if running with proper permissions
-    if os.geteuid() == 0:
-        print("⚠️  Running as root - this might not be necessary")
-        print("   Try running without sudo first")
-        print()
-
-    controller = BlenderController()
-
-    try:
-        success = controller.start()
-        if not success:
-            print("\n❌ Failed to start controller")
-            sys.exit(1)
-
-    except Exception as e:
-        print(f"\n💥 Unexpected error: {e}")
-        sys.exit(1)
-
-    print("\n👋 Goodbye!")
+    if DEVICE_AVAILABLE:
+        print("✅ Device driver available")
+        controller = BlenderController()
+        success, message = controller.connect()
+        print(f"Connection test: {message}")
+        if success:
+            controller.disconnect()
+    else:
+        print("❌ Device driver not available")
+        print("   Make sure the micro-panel project is in the Python path")
 
 if __name__ == "__main__":
     main()

@@ -101,10 +101,13 @@ cd micro-panel
 conda env create -f environment.yml
 conda activate micro-panel
 
-# Run basic device test
+# Test device connection
 python src/core/device.py
 
-# Start Blender integration
+# Option 1: Install as Blender addon (recommended)
+# See: src/applications/BLENDER_ADDON_INSTALL.md
+
+# Option 2: Run standalone Blender integration
 python src/applications/blender.py
 
 # Alternative: pip installation (if you prefer)
@@ -155,13 +158,33 @@ This separation keeps the main project clean while preserving all development hi
 
 ## 🎮 Supported Applications
 
-### Current
+### ✅ **Blender Integration (Ready!)**
 
-- [x] **Blender**: Viewport navigation, timeline control, property adjustment
-- [x] **Virtual MIDI**: Use as MIDI controller for DAWs
-- [x] **Mouse/Keyboard**: Simulate standard input devices
+**🔧 Full Blender Addon Available**
 
-### Planned
+- **Install as addon**: Seamless integration with Blender's interface
+- **3D Navigation**: Use trackballs for viewport rotation, panning, zooming
+- **Tool Control**: Encoders control various Blender parameters
+- **UI Panel**: Connect/disconnect panel directly from Blender sidebar
+- **Settings**: Sensitivity control, axis inversion, custom mappings
+
+📁 **Installation**: See [`src/applications/BLENDER_ADDON_INSTALL.md`](src/applications/BLENDER_ADDON_INSTALL.md)
+
+**Control Mapping:**
+
+- **Left Trackball**: Rotate 3D viewport (all axes)
+- **Center Trackball**: Pan viewport (X/Y movement)
+- **Trackball Wheel**: Zoom in/out
+- **12 Encoders**: Tool parameters, brush size, material properties
+- **52+ Buttons**: Mode switching, tool shortcuts, timeline control
+
+### Current Status
+
+- [x] **Device Framework**: Complete USB protocol with 61+ controls mapped
+- [x] **Robust Connection**: Auto-recovery, stable USB handling
+- [x] **Blender Ready**: Full addon with UI panel and settings
+
+### Planned Extensions
 
 - [ ] **OBS Studio**: Scene switching, filter control, audio mixing
 - [ ] **Adobe Photoshop**: Brush controls, layer adjustments
