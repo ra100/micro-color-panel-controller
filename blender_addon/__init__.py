@@ -8,7 +8,7 @@ Self-contained version with embedded device code
 bl_info = {
     "name": "DaVinci Micro Panel Controller",
     "author": "Micro Panel Project",
-    "version": (1, 1, 0),
+    "version": (1, 1, 1),
     "blender": (3, 0, 0),
     "location": "3D Viewport > Sidebar > Panel",
     "description": "Use DaVinci Micro Color Panel for 3D navigation and tool control",
@@ -45,43 +45,85 @@ except ImportError as e:
     USB_AVAILABLE = False
 
 def install_pyusb():
-    """Auto-install PyUSB using pip"""
+    """Auto-install PyUSB using pip to Blender's Python"""
     import subprocess
     import sys
+    import os
 
     try:
-        print("📦 Installing PyUSB...")
+        print("📦 Installing PyUSB to Blender's Python...")
+        print(f"Blender Python: {sys.executable}")
 
-        # Try to find pip command
-        pip_cmd = None
-        for cmd in ['pip', 'pip3', 'python -m pip', 'python3 -m pip']:
+        # Use Blender's Python executable directly
+        blender_python = sys.executable
+
+        # Try multiple installation methods
+        install_commands = [
+            # Method 1: Use Blender's Python with -m pip
+            [blender_python, '-m', 'pip', 'install', 'pyusb'],
+            # Method 2: Use Blender's Python with ensurepip first
+            [blender_python, '-m', 'ensurepip', '--default-pip'],
+            # Method 3: Try system pip with --target to Blender's site-packages
+        ]
+
+        # Get Blender's site-packages directory
+        import site
+        blender_site_packages = site.getsitepackages()
+        if blender_site_packages:
+            target_dir = blender_site_packages[0]
+            print(f"Target directory: {target_dir}")
+            # Add targeted installation as fallback
+            for pip_cmd in ['pip', 'pip3']:
+                install_commands.append([pip_cmd, 'install', 'pyusb', '--target', target_dir])
+
+        # Try each installation method
+        for i, cmd in enumerate(install_commands):
             try:
-                result = subprocess.run(cmd.split() + ['--version'],
-                                      capture_output=True, text=True, timeout=10)
+                print(f"Trying installation method {i+1}: {' '.join(cmd)}")
+
+                if i == 1:  # ensurepip step
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                    if result.returncode == 0:
+                        print("✅ pip ensured, now installing PyUSB...")
+                        # Now try to install PyUSB
+                        cmd = [blender_python, '-m', 'pip', 'install', 'pyusb']
+                    else:
+                        continue
+
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
                 if result.returncode == 0:
-                    pip_cmd = cmd.split()
-                    break
-            except:
+                    print("✅ PyUSB installed successfully!")
+                    print(f"Output: {result.stdout}")
+
+                    # Test if import works now
+                    try:
+                        test_result = subprocess.run([blender_python, '-c', 'import usb.core; print("Import test: OK")'],
+                                                   capture_output=True, text=True, timeout=10)
+                        if test_result.returncode == 0 and "Import test: OK" in test_result.stdout:
+                            print("✅ Import test successful!")
+                            print("🔄 Please restart Blender to use the USB functionality")
+                            return True, "PyUSB installed successfully - restart Blender"
+                        else:
+                            print(f"⚠️ Import test failed: {test_result.stderr}")
+                    except:
+                        pass
+
+                    return True, "PyUSB installed - restart Blender and check again"
+                else:
+                    error_msg = result.stderr or result.stdout or "Unknown error"
+                    print(f"Method {i+1} failed: {error_msg}")
+                    continue
+
+            except subprocess.TimeoutExpired:
+                print(f"Method {i+1} timed out")
+                continue
+            except Exception as e:
+                print(f"Method {i+1} error: {e}")
                 continue
 
-        if not pip_cmd:
-            return False, "Could not find pip command"
+        return False, "All installation methods failed - try manual installation"
 
-        # Install PyUSB
-        result = subprocess.run(pip_cmd + ['install', 'pyusb'],
-                              capture_output=True, text=True, timeout=60)
-
-        if result.returncode == 0:
-            print("✅ PyUSB installed successfully!")
-            print("🔄 Please restart Blender to use the USB functionality")
-            return True, "PyUSB installed successfully - restart Blender"
-        else:
-            error_msg = result.stderr or result.stdout or "Unknown error"
-            print(f"❌ Failed to install PyUSB: {error_msg}")
-            return False, f"Installation failed: {error_msg}"
-
-    except subprocess.TimeoutExpired:
-        return False, "Installation timed out"
     except Exception as e:
         print(f"❌ Installation error: {e}")
         return False, f"Installation error: {str(e)}"
@@ -370,10 +412,10 @@ class DAVINCI_OT_install_pyusb(bpy.types.Operator):
     """Auto-install PyUSB library"""
     bl_idname = "davinci.install_pyusb"
     bl_label = "Install PyUSB"
-    bl_description = "Automatically install PyUSB library using pip"
+    bl_description = "Automatically install PyUSB library to Blender's Python"
 
     def execute(self, context):
-        self.report({'INFO'}, "Installing PyUSB... check console for progress")
+        self.report({'INFO'}, "Installing PyUSB to Blender's Python... check console for progress")
 
         success, message = install_pyusb()
 
@@ -382,6 +424,33 @@ class DAVINCI_OT_install_pyusb(bpy.types.Operator):
         else:
             self.report({'ERROR'}, message)
 
+        return {'FINISHED'}
+
+
+class DAVINCI_OT_show_python_info(bpy.types.Operator):
+    """Show Blender's Python information"""
+    bl_idname = "davinci.show_python_info"
+    bl_label = "Python Info"
+    bl_description = "Show Blender's Python path and manual installation command"
+
+    def execute(self, context):
+        import sys
+        import site
+
+        # Print Python info to console
+        print("\n" + "="*60)
+        print("🐍 BLENDER PYTHON INFORMATION")
+        print("="*60)
+        print(f"Python executable: {sys.executable}")
+        print(f"Python version: {sys.version}")
+        print(f"Site packages: {site.getsitepackages()}")
+        print("\n💡 MANUAL INSTALLATION COMMANDS:")
+        print(f"   {sys.executable} -m pip install pyusb")
+        print("   OR")
+        print("   pip install pyusb --target {site.getsitepackages()[0] if site.getsitepackages() else 'SITE_PACKAGES'}")
+        print("="*60)
+
+        self.report({'INFO'}, "Python info printed to console")
         return {'FINISHED'}
 
 
@@ -446,7 +515,9 @@ class DAVINCI_PT_panel(bpy.types.Panel):
             box.label(text="USB: ❌ Not Available", icon='ERROR')
             row = box.row()
             row.operator("davinci.install_pyusb", text="Auto-Install PyUSB", icon='IMPORT')
-            box.label(text="Or manually: pip install pyusb", icon='INFO')
+            row = box.row()
+            row.operator("davinci.show_python_info", text="Python Info", icon='CONSOLE')
+            box.label(text="Check console for manual commands", icon='INFO')
 
         layout.separator()
 
@@ -486,6 +557,7 @@ classes = (
     DAVINCI_OT_connect_panel,
     DAVINCI_OT_disconnect_panel,
     DAVINCI_OT_install_pyusb,
+    DAVINCI_OT_show_python_info,
     DAVINCI_OT_test_connection,
     DAVINCI_PT_panel,
 )
