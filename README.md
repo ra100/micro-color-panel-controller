@@ -105,7 +105,8 @@ conda activate micro-panel
 python src/core/device.py
 
 # Option 1: Install as Blender addon (recommended)
-# See: src/applications/BLENDER_ADDON_INSTALL.md
+# Quick install: ln -s $(pwd)/blender_addon ~/.config/blender/4.*/scripts/addons/davinci_micro_panel
+# See: src/applications/BLENDER_ADDON_INSTALL.md for detailed instructions
 
 # Option 2: Run standalone Blender integration
 python src/applications/blender.py
@@ -125,7 +126,10 @@ micro-panel/
 │   │   ├── device.py          # Main panel interface (working!)
 │   │   └── input_parser.py    # Input event parsing
 │   └── applications/
-│       └── blender.py         # Blender integration example
+│       ├── blender.py         # Blender integration example
+│       └── BLENDER_ADDON_INSTALL.md  # Detailed installation guide
+├── blender_addon/             # 🎮 Ready-to-install Blender addon
+│   └── __init__.py           # Self-contained Blender addon (link this!)
 ├── udev/
 │   └── 99-davinci-micro-panel.rules  # Linux device permissions
 ├── investigation/             # 🔬 Development & testing tools
