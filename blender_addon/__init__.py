@@ -8,7 +8,7 @@ Self-contained version with embedded device code
 bl_info = {
     "name": "DaVinci Micro Panel Controller",
     "author": "Micro Panel Project",
-    "version": (1, 1, 1),
+    "version": (1, 2, 0),
     "blender": (3, 0, 0),
     "location": "3D Viewport > Sidebar > Panel",
     "description": "Use DaVinci Micro Color Panel for 3D navigation and tool control",
@@ -218,6 +218,21 @@ class DaVinciMicroPanel:
             print(f"❌ Failed to set illumination: {e}")
             return False
 
+    def read_input(self):
+        """Read input data from panel"""
+        if not self.is_connected or not self.device or not USB_AVAILABLE:
+            return None
+
+        try:
+            # Read from HID input endpoint with short timeout
+            data = self.device.read(0x81, 64, timeout=10)
+            if data and any(b != 0 for b in data):  # Only return non-zero data
+                return bytes(data)
+            return None
+        except Exception:
+            # Timeouts and disconnections are normal, don't log them
+            return None
+
     def cleanup(self):
         """Cleanup resources and turn off illumination"""
         if self.is_connected:
@@ -349,17 +364,264 @@ class BlenderController:
             return
 
         try:
-            # Get current 3D viewport
+            # Read input from panel
+            data = self.panel.read_input()
+            if data:
+                self.handle_input_data(data)
+
+        except Exception as e:
+            print(f"Input processing error: {e}")
+
+    def handle_input_data(self, data):
+        """Handle raw input data from panel"""
+        try:
+            report_id = data[0] if data else 0
+
+            # Get user preferences
+            props = bpy.context.scene.davinci_panel
+            sensitivity = props.sensitivity
+            invert_x = props.invert_x
+            invert_y = props.invert_y
+
+            if report_id == 0x05:  # Trackball and special functions
+                self.handle_trackball_data(data, sensitivity, invert_x, invert_y)
+            elif report_id == 0x02:  # Standard buttons
+                self.handle_button_data(data)
+            elif report_id == 0x06:  # Encoder rotations
+                self.handle_encoder_data(data, sensitivity)
+
+        except Exception as e:
+            print(f"Error handling input data: {e}")
+
+    def handle_trackball_data(self, data, sensitivity, invert_x, invert_y):
+        """Handle trackball movement for viewport navigation"""
+        try:
+            # Check for LEFT trackball movement (bytes 2, 6, 3 for X; 6, 2, 7 for Y; 10 for wheel)
+            left_x_changed = data[2] != 0 or data[6] != 0 or data[3] != 0
+            left_y_changed = data[6] != 0 or data[2] != 0 or data[7] != 0
+            left_wheel_changed = data[10] != 0
+
+            # Check for CENTER trackball movement (bytes 14, 15 for X; 14 for Y)
+            center_x_changed = data[14] != 0 or data[15] != 0
+            center_y_changed = data[14] != 0
+
+            if left_x_changed or left_y_changed:
+                # LEFT trackball: Rotate viewport
+                delta_x = self.calculate_trackball_delta(data[2], data[6], data[3])
+                delta_y = self.calculate_trackball_delta(data[6], data[2], data[7])
+
+                if invert_x:
+                    delta_x = -delta_x
+                if invert_y:
+                    delta_y = -delta_y
+
+                self.rotate_viewport(delta_x * sensitivity, delta_y * sensitivity)
+
+            elif center_x_changed or center_y_changed:
+                # CENTER trackball: Pan viewport
+                delta_x = self.calculate_trackball_delta(data[14], data[15])
+                delta_y = data[14]  # Simple Y movement
+
+                if invert_x:
+                    delta_x = -delta_x
+                if invert_y:
+                    delta_y = -delta_y
+
+                self.pan_viewport(delta_x * sensitivity, delta_y * sensitivity)
+
+            if left_wheel_changed:
+                # LEFT trackball wheel: Zoom
+                wheel_delta = data[10]
+                if wheel_delta > 128:  # Counter-clockwise
+                    zoom_delta = -(256 - wheel_delta)
+                else:  # Clockwise
+                    zoom_delta = wheel_delta
+
+                self.zoom_viewport(zoom_delta * sensitivity)
+
+        except Exception as e:
+            print(f"Error handling trackball data: {e}")
+
+    def calculate_trackball_delta(self, *bytes_data):
+        """Calculate movement delta from trackball bytes"""
+        # Simple delta calculation - can be refined based on testing
+        total = sum(b for b in bytes_data if b != 0)
+        if total > 128:
+            return -(256 - total)
+        return total
+
+    def rotate_viewport(self, delta_x, delta_y):
+        """Rotate 3D viewport"""
+        try:
+            # Find 3D viewport
             for area in bpy.context.screen.areas:
                 if area.type == 'VIEW_3D':
                     for region in area.regions:
                         if region.type == 'WINDOW':
-                            # Process trackball movement for viewport navigation
-                            # This would be expanded with actual input processing
+                            # Get the 3D view
+                            rv3d = area.spaces[0].region_3d
+
+                            # Calculate rotation
+                            from mathutils import Matrix
+
+                            # Horizontal rotation (around Z-axis)
+                            if abs(delta_x) > 0.1:
+                                rot_z = Matrix.Rotation(delta_x * 0.01, 4, 'Z')
+                                rv3d.view_matrix = rot_z @ rv3d.view_matrix
+
+                            # Vertical rotation (around local X-axis)
+                            if abs(delta_y) > 0.1:
+                                # Get current view direction for local X axis
+                                view_matrix = rv3d.view_matrix.copy()
+                                local_x = view_matrix[0][:3].normalized()
+                                rot_x = Matrix.Rotation(delta_y * 0.01, 4, local_x)
+                                rv3d.view_matrix = rot_x @ rv3d.view_matrix
+
+                            # Trigger redraw
+                            area.tag_redraw()
                             break
 
         except Exception as e:
-            print(f"Input processing error: {e}")
+            print(f"Error rotating viewport: {e}")
+
+    def pan_viewport(self, delta_x, delta_y):
+        """Pan 3D viewport"""
+        try:
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            rv3d = area.spaces[0].region_3d
+
+                            # Calculate pan offset
+                            pan_factor = 0.001
+
+                            # Pan in view space
+                            if abs(delta_x) > 0.1 or abs(delta_y) > 0.1:
+                                # Get view matrix components
+                                view_matrix = rv3d.view_matrix.copy()
+
+                                # Pan horizontally (right vector)
+                                if abs(delta_x) > 0.1:
+                                    right_vec = view_matrix[0][:3].normalized()
+                                    rv3d.view_location += right_vec * delta_x * pan_factor
+
+                                # Pan vertically (up vector)
+                                if abs(delta_y) > 0.1:
+                                    up_vec = view_matrix[1][:3].normalized()
+                                    rv3d.view_location += up_vec * delta_y * pan_factor
+
+                                area.tag_redraw()
+                            break
+
+        except Exception as e:
+            print(f"Error panning viewport: {e}")
+
+    def zoom_viewport(self, delta):
+        """Zoom 3D viewport"""
+        try:
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            rv3d = area.spaces[0].region_3d
+
+                            if abs(delta) > 0.1:
+                                # Zoom by adjusting view distance
+                                zoom_factor = 1.0 + (delta * 0.01)
+                                rv3d.view_distance *= zoom_factor
+
+                                # Clamp zoom to reasonable limits
+                                rv3d.view_distance = max(0.1, min(1000.0, rv3d.view_distance))
+
+                                area.tag_redraw()
+                            break
+
+        except Exception as e:
+            print(f"Error zooming viewport: {e}")
+
+    def handle_button_data(self, data):
+        """Handle button press/release events"""
+        try:
+            # Extract button states from bytes (Report 0x02)
+            if len(data) >= 8:
+                # Check each byte for button changes
+                for byte_idx in range(1, 8):  # Skip report ID
+                    byte_val = data[byte_idx]
+                    if byte_val != 0:  # Button pressed
+                        # Calculate button ID based on byte position and bit
+                        for bit in range(8):
+                            if byte_val & (1 << bit):
+                                button_id = (byte_idx - 1) * 8 + bit + 8  # Offset for encoder buttons
+                                self.handle_button_press(button_id)
+
+        except Exception as e:
+            print(f"Error handling button data: {e}")
+
+    def handle_button_press(self, button_id):
+        """Handle individual button press"""
+        try:
+            # Map common buttons to Blender operations
+            button_actions = {
+                20: lambda: self.select_all_toggle(),          # AUTO_COLOR -> Select All
+                22: lambda: bpy.ops.view3d.copybuffer(),       # COPY
+                23: lambda: bpy.ops.view3d.pastebuffer(),      # PASTE
+                24: lambda: bpy.ops.ed.undo(),                 # UNDO
+                25: lambda: bpy.ops.ed.redo(),                 # REDO
+                26: lambda: bpy.ops.object.delete(),           # DELETE
+                34: lambda: bpy.ops.screen.animation_play(),   # PLAY_STILL -> Play Animation
+                59: lambda: bpy.ops.screen.animation_cancel(), # STOP -> Stop Animation
+                39: lambda: self.cycle_viewport_shading(),     # CURSOR -> Cycle Viewport Shading
+            }
+
+            if button_id in button_actions:
+                print(f"🔘 Button {button_id} pressed")
+                button_actions[button_id]()
+            else:
+                print(f"🔘 Unmapped button {button_id} pressed")
+
+        except Exception as e:
+            print(f"Error handling button press {button_id}: {e}")
+
+    def select_all_toggle(self):
+        """Toggle select all/none"""
+        try:
+            if bpy.context.mode == 'OBJECT':
+                if bpy.context.selected_objects:
+                    bpy.ops.object.select_all(action='DESELECT')
+                else:
+                    bpy.ops.object.select_all(action='SELECT')
+        except:
+            pass
+
+    def cycle_viewport_shading(self):
+        """Cycle through viewport shading modes"""
+        try:
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    shading = area.spaces[0].shading
+                    modes = ['WIREFRAME', 'SOLID', 'MATERIAL', 'RENDERED']
+                    current_idx = modes.index(shading.type) if shading.type in modes else 0
+                    next_idx = (current_idx + 1) % len(modes)
+                    shading.type = modes[next_idx]
+                    area.tag_redraw()
+                    print(f"🎨 Viewport shading: {modes[next_idx]}")
+                    break
+        except Exception as e:
+            print(f"Error cycling viewport shading: {e}")
+
+    def handle_encoder_data(self, data, sensitivity):
+        """Handle encoder rotation events"""
+        try:
+            # Process encoder rotations (Report 0x06)
+            # Map encoders to various Blender properties
+            print(f"🔄 Encoder data: {[hex(b) for b in data[:16]]}")
+
+            # TODO: Implement encoder mapping to Blender properties
+            # Example: Map Y_LIFT encoder to object location.z
+
+        except Exception as e:
+            print(f"Error handling encoder data: {e}")
 
 
 class DAVINCI_OT_connect_panel(bpy.types.Operator):
