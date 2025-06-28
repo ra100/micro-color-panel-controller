@@ -2,13 +2,13 @@
 """
 DaVinci Micro Panel → Blender Addon
 Universal controller for Blender 3D navigation using the DaVinci panel
-Self-contained version with embedded device code
+Uses device_control module for USB interface
 """
 
 bl_info = {
     "name": "DaVinci Micro Panel Controller",
     "author": "Micro Panel Project",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (3, 0, 0),
     "location": "3D Viewport > Sidebar > Panel",
     "description": "Use DaVinci Micro Color Panel for 3D navigation and tool control",
@@ -25,24 +25,17 @@ from mathutils import Matrix, Vector, Euler
 import sys
 import os
 import time
-import threading
 from typing import Optional, Callable, Dict, Any
 
-# ===========================================================================
-# EMBEDDED DEVICE CODE (to avoid import issues)
-# ===========================================================================
-
-# Try to import USB libraries
+# Import device control module
 try:
-    import usb.core
-    import usb.util
-    import signal
-    import atexit
-    USB_AVAILABLE = True
-    print("✅ USB libraries available")
+    from . import device_control
+    USB_AVAILABLE = device_control.USB_AVAILABLE
+    print("✅ Device control module imported successfully")
 except ImportError as e:
-    print(f"⚠️ USB libraries not available: {e}")
+    print(f"⚠️ Device control module not available: {e}")
     USB_AVAILABLE = False
+    device_control = None
 
 def install_pyusb():
     """Auto-install PyUSB using pip to Blender's Python"""
@@ -128,153 +121,6 @@ def install_pyusb():
         print(f"❌ Installation error: {e}")
         return False, f"Installation error: {str(e)}"
 
-class DaVinciMicroPanel:
-    """Embedded DaVinci Micro Panel interface"""
-
-    # USB Device IDs
-    VENDOR_ID = 0x1edb
-    PRODUCT_ID = 0xda0f
-    HID_INTERFACE = 2
-
-    def __init__(self):
-        self.device: Optional['usb.core.Device'] = None
-        self.is_connected = False
-        self.is_illuminated = False
-        self.running = False
-
-    def connect(self) -> bool:
-        """Connect to the DaVinci panel"""
-        if not USB_AVAILABLE:
-            return False
-
-        try:
-            # Find the device
-            self.device = usb.core.find(idVendor=self.VENDOR_ID, idProduct=self.PRODUCT_ID)
-            if self.device is None:
-                print("❌ DaVinci Micro Panel not found!")
-                return False
-
-            print(f"✅ Found DaVinci Micro Panel: {self.device}")
-
-            # Detach kernel driver if necessary
-            if self.device.is_kernel_driver_active(self.HID_INTERFACE):
-                print(f"🔓 Detaching kernel driver from interface {self.HID_INTERFACE}")
-                self.device.detach_kernel_driver(self.HID_INTERFACE)
-
-            # Claim the HID interface
-            usb.util.claim_interface(self.device, self.HID_INTERFACE)
-            print(f"✅ Claimed HID interface {self.HID_INTERFACE}")
-
-            self.is_connected = True
-
-            # Turn on illumination when connected
-            self.set_illumination(True)
-
-            return True
-
-        except Exception as e:
-            print(f"❌ USB Error during connection: {e}")
-            return False
-
-    def set_illumination(self, enabled: bool, brightness: int = 100) -> bool:
-        """Control panel button illumination"""
-        if not self.is_connected or not self.device or not USB_AVAILABLE:
-            return False
-
-        try:
-            # First send secondary control command
-            secondary_data = bytes([0x0a, 0x01])
-            self.device.ctrl_transfer(
-                bmRequestType=0x21,
-                bRequest=0x09,
-                wValue=0x030a,
-                wIndex=0x0002,
-                data_or_wLength=secondary_data
-            )
-
-            # Then send illumination command
-            if enabled:
-                brightness = max(0, min(255, brightness))
-                data = bytes([0x03, brightness, brightness])
-                print(f"💡 Turning ON panel illumination (brightness: {brightness})")
-            else:
-                data = bytes([0x03, 0x00, 0x00])
-                print("🔘 Turning OFF panel illumination")
-
-            # Send HID SET_REPORT command
-            result = self.device.ctrl_transfer(
-                bmRequestType=0x21,
-                bRequest=0x09,
-                wValue=0x0303,
-                wIndex=0x0002,
-                data_or_wLength=data
-            )
-
-            self.is_illuminated = enabled
-            print(f"✅ Illumination {'ON' if enabled else 'OFF'} - Success!")
-            return True
-
-        except Exception as e:
-            print(f"❌ Failed to set illumination: {e}")
-            return False
-
-    def read_input(self):
-        """Read input data from panel"""
-        if not self.is_connected or not self.device or not USB_AVAILABLE:
-            return None
-
-        try:
-            # Read from HID input endpoint with short timeout
-            data = self.device.read(0x81, 64, timeout=10)
-            if data and any(b != 0 for b in data):  # Only return non-zero data
-                return bytes(data)
-            return None
-        except Exception:
-            # Timeouts and disconnections are normal, don't log them
-            return None
-
-    def cleanup(self):
-        """Cleanup resources and turn off illumination"""
-        if self.is_connected:
-            try:
-                self.set_illumination(False)
-                if self.device and USB_AVAILABLE:
-                    usb.util.release_interface(self.device, self.HID_INTERFACE)
-                self.is_connected = False
-                print("📱 Panel disconnected")
-            except Exception as e:
-                print(f"⚠️ Error during cleanup: {e}")
-
-# Embedded control mappings
-ENCODER_BUTTONS = {
-    'COLOR_BOOST_BUTTON': 14, 'CONTRAST_BUTTON': 11, 'HIGHLIGHTS_BUTTON': 16,
-    'HUE_BUTTON': 18, 'LUM_MIX_BUTTON': 19, 'MID_DETAIL_BUTTON': 13,
-    'PIVOT_BUTTON': 12, 'SATURATION_BUTTON': 17, 'SHADOWS_BUTTON': 15,
-    'Y_GAIN_BUTTON': 10, 'Y_GAMMA_BUTTON': 9, 'Y_LIFT_BUTTON': 8,
-}
-
-FUNCTION_BUTTONS = {
-    'ADD_KEYFRAME': 46, 'ADD_NODE': 44, 'ADD_WINDOW': 45, 'AUTO_COLOR': 20,
-    'BACKWARD_PLAY': 57, 'BYPASS': 28, 'COPY': 22, 'CURSOR': 39,
-    'DELETE': 26, 'DISABLE': 29, 'FORWARD_PLAY': 58, 'GRAB_STILL': 36,
-    'H_LITE': 37, 'LOOP': 31, 'NEXT_CLIP': 56, 'NEXT_FRAME': 54,
-    'NEXT_KEYFRAME': 50, 'NEXT_NODE': 52, 'NEXT_STILL': 48, 'OFFSET': 21,
-    'PASTE': 23, 'PLAY_STILL': 34, 'PREV_CLIP': 55, 'PREV_FRAME': 53,
-    'PREV_KEYFRAME': 49, 'PREV_NODE': 51, 'PREV_STILL': 47, 'REDO': 25,
-    'RESET': 27, 'RESET_GAIN': 43, 'RESET_GAMMA': 42, 'RESET_LIFT': 41,
-    'SELECT': 40, 'SPECIAL_LEFT': 32, 'SPECIAL_RIGHT': 33, 'STOP': 59,
-    'UNDO': 24, 'USER': 30, 'VIEWER': 38, 'WIPE_STILL': 35,
-}
-
-TRACKBALL_AXES = {
-    'LEFT_TRACKBALL_X': [2, 6, 3], 'LEFT_TRACKBALL_Y': [6, 2, 7], 'LEFT_TRACKBALL_WHEEL': [10],
-    'CENTER_TRACKBALL_X': [14, 15], 'CENTER_TRACKBALL_Y': [14],
-}
-
-# ===========================================================================
-# BLENDER ADDON CODE
-# ===========================================================================
-
 # Global controller instance
 panel_controller = None
 
@@ -290,9 +136,9 @@ class DaVinciPanelProperties(bpy.types.PropertyGroup):
     sensitivity: bpy.props.FloatProperty(
         name="Sensitivity",
         description="Control sensitivity multiplier",
-        default=1.0,
-        min=0.1,
-        max=5.0
+        default=0.1,
+        min=0.001,
+        max=0.5
     )
 
     invert_x: bpy.props.BoolProperty(
@@ -307,25 +153,41 @@ class DaVinciPanelProperties(bpy.types.PropertyGroup):
         default=False
     )
 
+    debug_mode: bpy.props.BoolProperty(
+        name="Debug Output",
+        description="Enable verbose debug output in console",
+        default=False
+    )
+
 class BlenderController:
     """DaVinci Micro Panel controller for Blender integration"""
 
     def __init__(self):
-        self.panel: Optional[DaVinciMicroPanel] = None
+        self.panel: Optional[device_control.DaVinciMicroPanel] = None
+        self.processor: Optional[device_control.InputProcessor] = None
         self.running = False
         self.timer = None
+        self.initial_view_matrix = None  # Store initial view state
 
     def connect(self):
         """Connect to the DaVinci panel"""
-        if not USB_AVAILABLE:
-            return False, "USB libraries not available - install PyUSB"
+        if not USB_AVAILABLE or not device_control:
+            return False, "Device control module not available - install PyUSB"
 
         try:
             print("🔌 Connecting to DaVinci Micro Panel...")
-            self.panel = DaVinciMicroPanel()
+            self.panel = device_control.DaVinciMicroPanel()
+            self.processor = device_control.InputProcessor()
 
             if not self.panel.connect():
                 return False, "Failed to connect to panel - check USB connection and permissions"
+
+            # Set up input processing callbacks
+            self.processor.set_callbacks(
+                trackball_cb=self.handle_trackball_input,
+                button_cb=self.handle_button_input,
+                encoder_cb=self.handle_encoder_input
+            )
 
             print("✅ Panel connected and illuminated!")
             return True, "Panel connected successfully"
@@ -338,15 +200,25 @@ class BlenderController:
         if self.panel:
             self.panel.cleanup()
             self.panel = None
-            print("🔌 Panel disconnected")
+        if self.processor:
+            self.processor = None
+        print("🔌 Panel disconnected")
 
     def start_monitoring(self):
         """Start input monitoring using Blender's timer system"""
         if self.panel and not self.running:
             self.running = True
-            # Register a timer to check for input events
-            self.timer = bpy.context.window_manager.event_timer_add(0.01, window=bpy.context.window)
+
+            # Store initial view state to prevent jumping
+            self._store_initial_view_state()
+
+            # Register a timer to check for input events (slower for stability)
+            self.timer = bpy.context.window_manager.event_timer_add(0.02, window=bpy.context.window)
             print("🎛️ Input monitoring started")
+            print("🔍 Move trackballs or press buttons to see input...")
+
+            # Start the modal operator to handle timer events
+            bpy.ops.davinci.panel_modal()
             return True
         return False
 
@@ -358,208 +230,213 @@ class BlenderController:
         self.running = False
         print("🛑 Input monitoring stopped")
 
+    def _store_initial_view_state(self):
+        """Store the initial view state to prevent jumping"""
+        try:
+            for area in bpy.context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    rv3d = area.spaces[0].region_3d
+                    self.initial_view_matrix = rv3d.view_matrix.copy()
+                    break
+        except Exception as e:
+            print(f"⚠️ Could not store initial view state: {e}")
+
     def process_input(self):
         """Process panel input and apply to Blender"""
-        if not self.panel or not self.running:
+        if not self.panel or not self.processor or not self.running:
             return
 
         try:
             # Read input from panel
             data = self.panel.read_input()
             if data:
-                self.handle_input_data(data)
+                # Get user preferences
+                props = bpy.context.scene.davinci_panel
+                sensitivity = props.sensitivity
+                invert_x = props.invert_x
+                invert_y = props.invert_y
+                debug_mode = props.debug_mode
+
+                # Process with user-controlled debug output
+                self.processor.process_input_data(
+                    data, sensitivity, invert_x, invert_y, debug=debug_mode
+                )
 
         except Exception as e:
             print(f"Input processing error: {e}")
 
-    def handle_input_data(self, data):
-        """Handle raw input data from panel"""
+    def handle_trackball_input(self, trackball_data):
+        """Handle trackball input from the input processor"""
         try:
-            report_id = data[0] if data else 0
+            # LEFT trackball: Rotate viewport
+            if 'left_trackball' in trackball_data:
+                left = trackball_data['left_trackball']
+                self.rotate_viewport_smooth(left['x'], left['y'])
 
-            # Get user preferences
-            props = bpy.context.scene.davinci_panel
-            sensitivity = props.sensitivity
-            invert_x = props.invert_x
-            invert_y = props.invert_y
+            # CENTER trackball: Pan viewport
+            if 'center_trackball' in trackball_data:
+                center = trackball_data['center_trackball']
+                self.pan_viewport_smooth(center['x'], center['y'])
 
-            if report_id == 0x05:  # Trackball and special functions
-                self.handle_trackball_data(data, sensitivity, invert_x, invert_y)
-            elif report_id == 0x02:  # Standard buttons
-                self.handle_button_data(data)
-            elif report_id == 0x06:  # Encoder rotations
-                self.handle_encoder_data(data, sensitivity)
+            # Wheel: Zoom viewport
+            if 'wheel' in trackball_data:
+                wheel = trackball_data['wheel']
+                self.zoom_viewport_smooth(wheel['delta'])
 
         except Exception as e:
-            print(f"Error handling input data: {e}")
+            print(f"Error handling trackball input: {e}")
 
-    def handle_trackball_data(self, data, sensitivity, invert_x, invert_y):
-        """Handle trackball movement for viewport navigation"""
+    def rotate_viewport_smooth(self, delta_x, delta_y):
+        """Orbit viewport around object center with reduced sensitivity"""
         try:
-            # Check for LEFT trackball movement (bytes 2, 6, 3 for X; 6, 2, 7 for Y; 10 for wheel)
-            left_x_changed = data[2] != 0 or data[6] != 0 or data[3] != 0
-            left_y_changed = data[6] != 0 or data[2] != 0 or data[7] != 0
-            left_wheel_changed = data[10] != 0
-
-            # Check for CENTER trackball movement (bytes 14, 15 for X; 14 for Y)
-            center_x_changed = data[14] != 0 or data[15] != 0
-            center_y_changed = data[14] != 0
-
-            if left_x_changed or left_y_changed:
-                # LEFT trackball: Rotate viewport
-                delta_x = self.calculate_trackball_delta(data[2], data[6], data[3])
-                delta_y = self.calculate_trackball_delta(data[6], data[2], data[7])
-
-                if invert_x:
-                    delta_x = -delta_x
-                if invert_y:
-                    delta_y = -delta_y
-
-                self.rotate_viewport(delta_x * sensitivity, delta_y * sensitivity)
-
-            elif center_x_changed or center_y_changed:
-                # CENTER trackball: Pan viewport
-                delta_x = self.calculate_trackball_delta(data[14], data[15])
-                delta_y = data[14]  # Simple Y movement
-
-                if invert_x:
-                    delta_x = -delta_x
-                if invert_y:
-                    delta_y = -delta_y
-
-                self.pan_viewport(delta_x * sensitivity, delta_y * sensitivity)
-
-            if left_wheel_changed:
-                # LEFT trackball wheel: Zoom
-                wheel_delta = data[10]
-                if wheel_delta > 128:  # Counter-clockwise
-                    zoom_delta = -(256 - wheel_delta)
-                else:  # Clockwise
-                    zoom_delta = wheel_delta
-
-                self.zoom_viewport(zoom_delta * sensitivity)
-
-        except Exception as e:
-            print(f"Error handling trackball data: {e}")
-
-    def calculate_trackball_delta(self, *bytes_data):
-        """Calculate movement delta from trackball bytes"""
-        # Simple delta calculation - can be refined based on testing
-        total = sum(b for b in bytes_data if b != 0)
-        if total > 128:
-            return -(256 - total)
-        return total
-
-    def rotate_viewport(self, delta_x, delta_y):
-        """Rotate 3D viewport"""
-        try:
-            # Find 3D viewport
             for area in bpy.context.screen.areas:
                 if area.type == 'VIEW_3D':
-                    for region in area.regions:
-                        if region.type == 'WINDOW':
-                            # Get the 3D view
-                            rv3d = area.spaces[0].region_3d
+                    rv3d = area.spaces[0].region_3d
 
-                            # Calculate rotation
-                            from mathutils import Matrix
+                    # Much lower rotation sensitivity for smoother orbiting
+                    rotation_speed = 0.02  # Reduced from 0.5 to 0.02
 
-                            # Horizontal rotation (around Z-axis)
-                            if abs(delta_x) > 0.1:
-                                rot_z = Matrix.Rotation(delta_x * 0.01, 4, 'Z')
-                                rv3d.view_matrix = rot_z @ rv3d.view_matrix
+                    # Find center point to orbit around
+                    orbit_center = Vector((0, 0, 0))  # Default to world origin
 
-                            # Vertical rotation (around local X-axis)
-                            if abs(delta_y) > 0.1:
-                                # Get current view direction for local X axis
-                                view_matrix = rv3d.view_matrix.copy()
-                                local_x = view_matrix[0][:3].normalized()
-                                rot_x = Matrix.Rotation(delta_y * 0.01, 4, local_x)
-                                rv3d.view_matrix = rot_x @ rv3d.view_matrix
+                    # Use selected object center if available
+                    if bpy.context.selected_objects:
+                        active_obj = bpy.context.active_object
+                        if active_obj:
+                            orbit_center = active_obj.location.copy()
+                        else:
+                            # Use center of selected objects
+                            locations = [obj.location for obj in bpy.context.selected_objects]
+                            orbit_center = sum(locations, Vector()) / len(locations)
 
-                            # Trigger redraw
-                            area.tag_redraw()
-                            break
+                    rotation_applied = False
+
+                    # Apply horizontal rotation (around Z-axis)
+                    if abs(delta_x) > 0.01:
+                        # Create rotation matrix around world Z-axis
+                        rot_z = Matrix.Rotation(-delta_x * rotation_speed, 4, 'Z')
+
+                        # Translate to origin, rotate, translate back
+                        self._orbit_around_point(rv3d, rot_z, orbit_center)
+                        rotation_applied = True
+
+                    # Apply vertical rotation (around view's right axis)
+                    if abs(delta_y) > 0.01:
+                        # Get view right vector for vertical rotation
+                        view_matrix = rv3d.view_matrix.copy()
+                        right_vec = Vector(view_matrix[0][:3]).normalized()
+
+                        # Create rotation matrix around right axis
+                        rot_right = Matrix.Rotation(-delta_y * rotation_speed, 4, right_vec)
+
+                        # Apply orbit rotation
+                        self._orbit_around_point(rv3d, rot_right, orbit_center)
+                        rotation_applied = True
+
+                    if rotation_applied:
+                        area.tag_redraw()
+                    break
 
         except Exception as e:
             print(f"Error rotating viewport: {e}")
 
-    def pan_viewport(self, delta_x, delta_y):
-        """Pan 3D viewport"""
+    def _orbit_around_point(self, rv3d, rotation_matrix, center_point):
+        """Helper to orbit the view around a specific point"""
+        try:
+            # Get current view location and target point
+            view_location = rv3d.view_location.copy()
+
+            # Calculate vector from center to view location
+            to_view = view_location - center_point
+
+            # Convert to 4D vector for matrix multiplication
+            to_view_4d = Vector((to_view.x, to_view.y, to_view.z, 0.0))
+
+            # Apply rotation to this vector
+            rotated_4d = rotation_matrix @ to_view_4d
+
+            # Convert back to 3D vector
+            rotated_to_view = Vector((rotated_4d.x, rotated_4d.y, rotated_4d.z))
+
+            # Set new view location
+            rv3d.view_location = center_point + rotated_to_view
+
+            # Also rotate the view matrix to maintain orientation
+            rv3d.view_matrix = rotation_matrix @ rv3d.view_matrix
+
+        except Exception as e:
+            print(f"Error in orbit calculation: {e}")
+
+    def pan_viewport_smooth(self, delta_x, delta_y):
+        """Improved 3D viewport panning"""
         try:
             for area in bpy.context.screen.areas:
                 if area.type == 'VIEW_3D':
-                    for region in area.regions:
-                        if region.type == 'WINDOW':
-                            rv3d = area.spaces[0].region_3d
+                    rv3d = area.spaces[0].region_3d
 
-                            # Calculate pan offset
-                            pan_factor = 0.001
+                    # Get current view matrix
+                    view_matrix = rv3d.view_matrix.copy()
 
-                            # Pan in view space
-                            if abs(delta_x) > 0.1 or abs(delta_y) > 0.1:
-                                # Get view matrix components
-                                view_matrix = rv3d.view_matrix.copy()
+                    # Extract view vectors and convert to Vector objects
+                    right_vec = Vector(view_matrix[0][:3]).normalized()
+                    up_vec = Vector(view_matrix[1][:3]).normalized()
 
-                                # Pan horizontally (right vector)
-                                if abs(delta_x) > 0.1:
-                                    right_vec = view_matrix[0][:3].normalized()
-                                    rv3d.view_location += right_vec * delta_x * pan_factor
+                    # Calculate pan factor based on view distance
+                    pan_factor = rv3d.view_distance * 0.0001
 
-                                # Pan vertically (up vector)
-                                if abs(delta_y) > 0.1:
-                                    up_vec = view_matrix[1][:3].normalized()
-                                    rv3d.view_location += up_vec * delta_y * pan_factor
+                    pan_applied = False
 
-                                area.tag_redraw()
-                            break
+                    # Pan horizontally (right vector)
+                    if abs(delta_x) > 0.01:
+                        rv3d.view_location += right_vec * delta_x * pan_factor
+                        pan_applied = True
+
+                    # Pan vertically (up vector)
+                    if abs(delta_y) > 0.01:
+                        rv3d.view_location += up_vec * delta_y * pan_factor
+                        pan_applied = True
+
+                    if pan_applied:
+                        area.tag_redraw()
+                    break
 
         except Exception as e:
             print(f"Error panning viewport: {e}")
 
-    def zoom_viewport(self, delta):
-        """Zoom 3D viewport"""
+    def zoom_viewport_smooth(self, delta):
+        """Improved 3D viewport zooming with better sensitivity"""
         try:
             for area in bpy.context.screen.areas:
                 if area.type == 'VIEW_3D':
-                    for region in area.regions:
-                        if region.type == 'WINDOW':
-                            rv3d = area.spaces[0].region_3d
+                    rv3d = area.spaces[0].region_3d
 
-                            if abs(delta) > 0.1:
-                                # Zoom by adjusting view distance
-                                zoom_factor = 1.0 + (delta * 0.01)
-                                rv3d.view_distance *= zoom_factor
+                    if abs(delta) > 0.01:
+                        # More gradual zoom factor
+                        zoom_factor = 1.0 + (delta * 0.02)  # Reduced sensitivity
 
-                                # Clamp zoom to reasonable limits
-                                rv3d.view_distance = max(0.1, min(1000.0, rv3d.view_distance))
+                        # Apply zoom
+                        new_distance = rv3d.view_distance * zoom_factor
 
-                                area.tag_redraw()
-                            break
+                        # Clamp zoom to reasonable limits
+                        rv3d.view_distance = max(0.01, min(1000.0, new_distance))
+
+                        area.tag_redraw()
+                    break
 
         except Exception as e:
             print(f"Error zooming viewport: {e}")
 
-    def handle_button_data(self, data):
-        """Handle button press/release events"""
+    def handle_button_input(self, button_data):
+        """Handle button input from the input processor"""
         try:
-            # Extract button states from bytes (Report 0x02)
-            if len(data) >= 8:
-                # Check each byte for button changes
-                for byte_idx in range(1, 8):  # Skip report ID
-                    byte_val = data[byte_idx]
-                    if byte_val != 0:  # Button pressed
-                        # Calculate button ID based on byte position and bit
-                        for bit in range(8):
-                            if byte_val & (1 << bit):
-                                button_id = (byte_idx - 1) * 8 + bit + 8  # Offset for encoder buttons
-                                self.handle_button_press(button_id)
-
+            if 'buttons' in button_data:
+                for button_id in button_data['buttons']:
+                    self.execute_button_action(button_id)
         except Exception as e:
-            print(f"Error handling button data: {e}")
+            print(f"Error handling button input: {e}")
 
-    def handle_button_press(self, button_id):
-        """Handle individual button press"""
+    def execute_button_action(self, button_id):
+        """Execute action for specific button ID"""
         try:
             # Map common buttons to Blender operations
             button_actions = {
@@ -582,6 +459,14 @@ class BlenderController:
 
         except Exception as e:
             print(f"Error handling button press {button_id}: {e}")
+
+    def handle_encoder_input(self, encoder_data):
+        """Handle encoder input from the input processor"""
+        try:
+            # TODO: Implement encoder actions
+            print(f"🔄 Encoder input received")
+        except Exception as e:
+            print(f"Error handling encoder input: {e}")
 
     def select_all_toggle(self):
         """Toggle select all/none"""
@@ -609,19 +494,6 @@ class BlenderController:
                     break
         except Exception as e:
             print(f"Error cycling viewport shading: {e}")
-
-    def handle_encoder_data(self, data, sensitivity):
-        """Handle encoder rotation events"""
-        try:
-            # Process encoder rotations (Report 0x06)
-            # Map encoders to various Blender properties
-            print(f"🔄 Encoder data: {[hex(b) for b in data[:16]]}")
-
-            # TODO: Implement encoder mapping to Blender properties
-            # Example: Map Y_LIFT encoder to object location.z
-
-        except Exception as e:
-            print(f"Error handling encoder data: {e}")
 
 
 class DAVINCI_OT_connect_panel(bpy.types.Operator):
@@ -728,17 +600,19 @@ class DAVINCI_OT_test_connection(bpy.types.Operator):
         debug_info.append(f"USB Available: {USB_AVAILABLE}")
         debug_info.append(f"Addon Version: {bl_info['version']}")
 
-        if USB_AVAILABLE:
+        if USB_AVAILABLE and device_control:
             try:
-                # Test device detection
-                import usb.core
-                device = usb.core.find(idVendor=0x1edb, idProduct=0xda0f)
-                if device:
-                    debug_info.append(f"✅ Device found: {device}")
+                # Test device detection using device_control module
+                test_panel = device_control.DaVinciMicroPanel()
+                if test_panel.connect():
+                    debug_info.append(f"✅ Device found and connected successfully")
+                    test_panel.cleanup()
                 else:
-                    debug_info.append("❌ Device not found")
+                    debug_info.append("❌ Device not found or connection failed")
             except Exception as e:
-                debug_info.append(f"❌ USB test error: {e}")
+                debug_info.append(f"❌ Device test error: {e}")
+        elif not device_control:
+            debug_info.append("❌ Device control module not available")
 
         # Print to console
         print("\n" + "="*50)
@@ -752,6 +626,29 @@ class DAVINCI_OT_test_connection(bpy.types.Operator):
         status = "✅" if USB_AVAILABLE else "❌"
         self.report({'INFO'}, f"Debug info printed to console {status}")
         return {'FINISHED'}
+
+
+class DAVINCI_OT_panel_modal(bpy.types.Operator):
+    """Modal operator for DaVinci panel input handling"""
+    bl_idname = "davinci.panel_modal"
+    bl_label = "DaVinci Panel Input Handler"
+
+    def modal(self, context, event):
+        global panel_controller
+
+        if event.type == 'TIMER' and panel_controller and panel_controller.running:
+            # Process input from panel
+            panel_controller.process_input()
+
+        # Continue running while controller is active
+        if panel_controller and panel_controller.running:
+            return {'PASS_THROUGH'}
+        else:
+            return {'FINISHED'}
+
+    def execute(self, context):
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
 
 
 class DAVINCI_PT_panel(bpy.types.Panel):
@@ -800,6 +697,7 @@ class DAVINCI_PT_panel(bpy.types.Panel):
         layout.prop(props, "sensitivity")
         layout.prop(props, "invert_x")
         layout.prop(props, "invert_y")
+        layout.prop(props, "debug_mode")
 
         layout.separator()
 
@@ -821,6 +719,7 @@ classes = (
     DAVINCI_OT_install_pyusb,
     DAVINCI_OT_show_python_info,
     DAVINCI_OT_test_connection,
+    DAVINCI_OT_panel_modal,
     DAVINCI_PT_panel,
 )
 
